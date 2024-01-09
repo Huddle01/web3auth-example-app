@@ -1,4 +1,5 @@
 import { AccessToken, Role } from "@huddle01/server-sdk/auth";
+import * as jose from "jose";
 
 export const dynamic = "force-dynamic";
 
@@ -36,38 +37,32 @@ const createToken = async (
   return token;
 };
 
-export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
+export async function POST(request: Request) {
+  const { roomId, appPubKey } = await request.json();
+  const idToken = request.headers.get("authorization")?.split(" ")[1];
 
-  const roomId = searchParams.get("roomId");
-  const displayName = searchParams.get("displayName");
-
-  if (!roomId || !displayName) {
-    return new Response("Missing roomId or displayName", { status: 400 });
+  if (!idToken) {
+    return new Response("Unauthorized", { status: 401 });
   }
+
+  const jwks = jose.createRemoteJWKSet(
+    new URL("https://api-auth.web3auth.io/jwks")
+  );
+
+  const jwtDecoded = await jose.jwtVerify(idToken, jwks, {
+    algorithms: ["ES256"],
+  });
 
   let token: string;
 
-  try {
-    const response = await fetch(
-      `https://gamma.iriko.huddle01.com/api/v1/live-meeting/preview-peers?roomId=${roomId}`,
-      {
-        headers: {
-          "x-api-key": process.env.API_KEY ?? "",
-        },
-      }
-    );
-    const data = await response.json();
-    console.log(data);
-    const { previewPeers } = data;
-
+  if ((jwtDecoded.payload as any).wallets[0].public_key === appPubKey) {
     token = await createToken(
       roomId,
-      previewPeers.length > 0 ? Role.GUEST : Role.HOST,
-      displayName
+      Role.HOST,
+      (jwtDecoded.payload as any).name
     );
-  } catch (error) {
-    token = await createToken(roomId, Role.HOST, displayName);
+  } else {
+    return new Response("Unauthorized", { status: 401 });
   }
 
   return new Response(token, { status: 200 });

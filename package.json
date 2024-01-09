@@ -11,10 +11,13 @@
   "dependencies": {
     "@huddle01/react": "^1.0.0-alpha.66",
     "@huddle01/server-sdk": "^1.0.0-alpha.25",
+    "@toruslabs/eccrypto": "^4.0.0",
+    "@toruslabs/openlogin-ed25519": "^6.0.0",
     "@walletconnect/sign-client": "^2.11.0",
     "@web3auth/base": "^7.2.1",
     "@web3auth/modal": "^7.3.0",
     "@web3auth/ui": "^7.2.1",
+    "jose": "^5.2.0",
     "next": "14.0.4",
     "react": "^18",
     "react-dom": "^18",

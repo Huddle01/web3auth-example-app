@@ -13,6 +13,7 @@ import { Inter } from "next/font/google";
 import { useEffect, useRef, useState } from "react";
 import { Web3Auth } from "@web3auth/modal";
 import { ADAPTER_EVENTS } from "@web3auth/base";
+import { getPublicCompressed } from "@toruslabs/eccrypto";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -33,31 +34,29 @@ export default function Room({ params }: { params: { roomId: string } }) {
     useLocalScreenShare();
   const { peerIds } = usePeerIds();
 
-  const subscribeAuthEvents = (web3auth: Web3Auth) => {
-    web3auth.on(ADAPTER_EVENTS.CONNECTED, async () => {
-      const info = await web3auth.getUserInfo();
-      console.log("info", info.name);
-      console.log("roomId", params.roomId);
-      const tokenResponse = await fetch(
-        `/token?roomId=${params.roomId}&displayName=${info.name ?? "guest"}`
-      );
-      const token = await tokenResponse.text();
-      if (token) {
-        await joinRoom({
-          roomId: params.roomId,
-          token,
-        });
-      }
+  const authenticateUser = async () => {
+    const info = await web3auth.getUserInfo();
+    const app_scoped_key = (await web3auth.provider?.request({
+      method: "eth_private_key", // use "private_key" for other non-evm chains
+    })) as any;
+    const app_pub_key = getPublicCompressed(
+      Buffer.from(app_scoped_key.padStart(64, "0"), "hex")
+    ).toString("hex");
+    console.log(app_pub_key);
+    const tokenResponse = await fetch(`/token?roomId=${params.roomId}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${info.idToken}`,
+      },
+      body: JSON.stringify({ appPubKey: app_pub_key, roomId: params.roomId }),
     });
-    web3auth.on(ADAPTER_EVENTS.DISCONNECTED, () => {
-      console.log("disconnected");
-    });
-    web3auth.on(ADAPTER_EVENTS.ERRORED, (error) => {
-      console.log("error", error);
-    });
-    web3auth.on(ADAPTER_EVENTS.ERRORED, (error) => {
-      console.log("error", error);
-    });
+    const token = await tokenResponse.text();
+    if (state === "idle")
+      await joinRoom({
+        roomId: params.roomId,
+        token,
+      });
   };
 
   useEffect(() => {
@@ -83,7 +82,13 @@ export default function Room({ params }: { params: { roomId: string } }) {
     if (!web3auth.connected) {
       init();
     }
-    subscribeAuthEvents(web3auth);
+    const handleConnected = async () => {
+      await authenticateUser();
+    };
+    web3auth.on(ADAPTER_EVENTS.CONNECTED, handleConnected);
+    return () => {
+      web3auth.off(ADAPTER_EVENTS.CONNECTED, handleConnected);
+    };
   }, [web3auth.connected]);
 
   return (
